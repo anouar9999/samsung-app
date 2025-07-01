@@ -87,7 +87,7 @@ class BoardView extends StatelessWidget {
         height: dynamicSize,
         width: dynamicSize,
         alignment: Alignment.topCenter,
-        // padding: EdgeInsets.only(top: topPadding),
+        padding: EdgeInsets.only(top: topPadding),
         child: ConstrainedBox(
           constraints: BoxConstraints.expand(
             height: dynamicSize / 2.5,
@@ -134,7 +134,7 @@ class BoardView extends StatelessWidget {
                           color: fortune.FontColor ?? Colors.white,
                          
                           fontFamily: 'SamsungSharpSans-medium',
-                          fontSize: 10.0.clamp(minFontSize, maxFontSize),
+                          fontSize: 29.0.clamp(minFontSize, maxFontSize),
 
                         ),
                         textAlign: TextAlign.center,

@@ -96,7 +96,7 @@ class _FortuneWheelState extends State<FortuneWheel>
 
   Widget _buildStressTestButton() {
     return Positioned(
-      top: 5,
+      top: 50,
       left: 20,
       child: FloatingActionButton.extended(
         onPressed:
@@ -518,7 +518,7 @@ class _FortuneWheelState extends State<FortuneWheel>
   Widget _buildCenterOfWheel() {
     return Image.asset(
       "assets/icons/go.png",
-      width: 100,
+      width: 150,
     );
   }
 
