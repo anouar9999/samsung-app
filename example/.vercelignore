@@ -1,0 +1,35 @@
+# Development
+.dart_tool
+.idea
+.vscode
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub/
+.build/
+pubspec.lock
+
+# Native platform builds
+android/
+ios/
+windows/
+linux/
+macos/
+
+# Test and documentation
+test/
+doc/
+coverage/
+
+# Build directories except web
+build/*
+!build/web/
+
+# Other
+*.log
+*.iml
+.DS_Store
+.git/
+
+# Dependencies
+.pub-cache/
