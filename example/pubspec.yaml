@@ -28,6 +28,7 @@ dependencies:
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
+  win32: 2.0.5
   cupertino_icons: ^1.0.2
   confetti: 0.8.0
   lottie: ^2.1.0
@@ -89,6 +90,15 @@ flutter:
   #       - asset: fonts/TrajanPro_Bold.ttf
   #         weight: 700
     - family: SamsungSharpSans
+      fonts:
+        - asset: fonts/samsungsharpsans.otf
+
+
+    - family: SamsungSharpSans-medium
+      fonts:
+        - asset: fonts/samsungsharpsans-medium.otf
+
+    - family: SamsungSharpSans-bold
       fonts:
         - asset: fonts/SamsungSharpSans-Bold.ttf
 

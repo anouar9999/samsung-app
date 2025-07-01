@@ -76,8 +76,8 @@ class BoardView extends StatelessWidget {
       final dynamicSize = size * (shortestSide / 400); // 400 is a baseline width
       
       // Calculate responsive font sizes
-      final minFontSize = (shortestSide * 0.03).clamp(12.0, 24.0);
-      final maxFontSize = (shortestSide * 0.05).clamp(24.0, 48.0);
+      final minFontSize = (shortestSide * 0.04).clamp(15.0, 24.0);
+      final maxFontSize = (shortestSide * 0.06).clamp(25.0, 48.0);
       
       // Calculate responsive padding and spacing
       final topPadding = (dynamicSize * 0.15).clamp(10.0, 40.0);
@@ -87,7 +87,7 @@ class BoardView extends StatelessWidget {
         height: dynamicSize,
         width: dynamicSize,
         alignment: Alignment.topCenter,
-        padding: EdgeInsets.only(top: topPadding),
+        // padding: EdgeInsets.only(top: topPadding),
         child: ConstrainedBox(
           constraints: BoxConstraints.expand(
             height: dynamicSize / 2.5,
@@ -99,33 +99,48 @@ class BoardView extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               mainAxisSize: MainAxisSize.min,
               children: [
+                  // Flexible(
+                  //   child: FittedBox(
+                  //     fit: BoxFit.scaleDown,
+                  //     child: AutoSizeText(
+                  //       fortune.titleName!,
+                  //       style: fortune.textStyle?.copyWith(
+                  //         fontSize: maxFontSize,
+                  //       ) ?? TextStyle(
+                  //         color: fortune.FontColor ?? Colors.white,
+                  //         fontWeight: FontWeight.w600,
+                  //         fontFamily: 'SamsungSharpSans',
+                  //         fontSize: 10,
+                  //         height: 1.2,
+                  //       ),
+                  //       textAlign: TextAlign.center,
+                  //       minFontSize: minFontSize,
+                  //       maxFontSize: maxFontSize,
+                  //       maxLines: 2,
+                  //       overflow: TextOverflow.ellipsis,
+                  //     ),
+                  //   ),
+                  // ),
+               
                 if (fortune.titleName != null)
-                  Flexible(
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(
-                        vertical: (dynamicSize * 0.02).clamp(4.0, 12.0),
-                        horizontal: (dynamicSize * 0.02).clamp(4.0, 12.0),
-                      ),
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: AutoSizeText(
-                          fortune.titleName!,
-                          style: fortune.textStyle?.copyWith(
-                            fontSize: maxFontSize,
-                          ) ?? TextStyle(
-                            color: fortune.FontColor ?? Colors.white,
-                            fontWeight: FontWeight.w600,
-                            fontFamily: 'SamsungSharpSans',
-                            fontSize: maxFontSize,
-                            letterSpacing: (shortestSide * 0.001).clamp(0.5, 1.5),
-                            height: 1.2,
-                          ),
-                          textAlign: TextAlign.center,
-                          minFontSize: minFontSize,
-                          maxFontSize: maxFontSize,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
+                 Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: AutoSizeText(
+                        fortune.titleName!,
+                        style: fortune.textStyle?.copyWith(
+                     
+                        ) ?? TextStyle(
+                          color: fortune.FontColor ?? Colors.white,
+                         
+                          fontFamily: 'SamsungSharpSans-medium',
+                          fontSize: 10.0.clamp(minFontSize, maxFontSize),
+
                         ),
+                        textAlign: TextAlign.center,
+                      
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ),
@@ -169,6 +184,21 @@ class _BorderPainter extends CustomPainter {
     double radius = size.width / 2;
     Offset center = size.center(Offset.zero);
 
+    //Inner shadow gradient
+    Paint innerShadow = Paint()
+      ..shader = RadialGradient(
+        colors: [
+          Colors.transparent, // Fade to transparent towards center
+                    Colors.black.withOpacity(0.05), // Dark shadow at the edge
+
+        ],
+        stops: [0.0, 1.0], // Shadow starts at 85% of the radius
+        center: Alignment.center,
+      ).createShader(Rect.fromCircle(center: center, radius: radius));
+    
+    // Draw inner shadow circle
+    canvas.drawCircle(center, radius - 12.5, innerShadow); // Adjust radius to fit inside the border
+
     //Outer border
     Paint outlineBrush = Paint()
       ..style = PaintingStyle.stroke
@@ -191,7 +221,7 @@ class _BorderPainter extends CustomPainter {
     //LED lights
     Paint centerDot = Paint()
       ..style = PaintingStyle.fill
-      ..color = const Color.fromARGB(255, 76, 4, 4) ////color of the dots
+      ..color = const Color.fromARGB(255, 255, 255, 255) ////color of the dots
       ..strokeWidth = 100.0;
 
     Paint secondaryDot = Paint()
@@ -219,6 +249,7 @@ class _BorderPainter extends CustomPainter {
   @override
   bool shouldRepaint(CustomPainter oldDelegate) => true;
 }
+
 
 class _SlicesPath extends CustomClipper<Path> {
   final double angle;

@@ -287,31 +287,55 @@ class Constants {
   ];
 
   ///Yêu hoặc không yêu?
-  static List<Fortune> loveOrNotLove = <Fortune>[
-    const Fortune(
-        id: 3,
-        titleName: 'GOURDE',
-        backgroundColor: Colors.white,
-        FontColor: Colors.black),
-     Fortune(
-      id: 1,
-      titleName: 'POWER BANK',
-      backgroundColor:HexColor("#FFD700"),
-      FontColor: Colors.black,
-    ),
-    Fortune(
-        id: 2,
-        titleName: 'STICKER',
-        backgroundColor: Colors.white,
-        FontColor: Colors.black
-        //  ,icon: Image.asset("assets/icons/sprite_bottle.png",width: 90,)
-        ),
-    Fortune(
-      id: 4, titleName: 'PARAPLUIE', backgroundColor: HexColor("#0098FF"),
-      FontColor: Colors.black,
-      //  icon: Image.asset("assets/icons/sprite_bottle.png",width: 50,)
-    ),
-  ];
+  ///'Stickers'
+  /// 
+ static List<Fortune> loveOrNotLove = <Fortune>[
+  Fortune(
+    id: 1,
+    titleName: 'Clef USB',
+    backgroundColor: HexColor("#192287"),
+    FontColor: Colors.white,
+    icon: Image.asset("assets/icons/whells(3).png", width: 90,)
+  ),
+  Fortune(
+    id: 99, // Change this to 99 for "Pas de chance"
+    titleName: 'Pas de \nchance',
+    backgroundColor: HexColor("#003bba"),
+    FontColor: Colors.white,
+    icon: Image.asset("assets/icons/whells__5_-removebg-preview.png", width: 90,)
+  ),
+  Fortune(
+    id: 2,
+    titleName:'Produit\n Samsung',
+    backgroundColor: HexColor("#192287"),
+    FontColor: Colors.white,
+    icon: Image.asset("assets/icons/whells__2_-removebg-preview.png", width: 90,)
+  ),
+  Fortune(
+    id: 3,
+    titleName: 'Sac à dos',
+    backgroundColor: HexColor("#003bba"),
+    FontColor: Colors.white,
+    icon: Image.asset("assets/icons/whells__1_-removebg-preview.png", width: 90,)
+  ),
+  Fortune(
+    id: 4, 
+    titleName: 'Porte clé',  
+    backgroundColor: HexColor("#192287"),
+    FontColor: Colors.white,
+    icon: Image.asset("assets/icons/whells-removebg-preview.png", width: 50,)
+  ),
+  Fortune(
+    id: 5, 
+    titleName: 'Stickers',  
+    backgroundColor: HexColor("#003bba"),
+    FontColor: Colors.white,
+    icon: Image.asset("assets/icons/whells__4_-removebg-preview.png", width: 50,)
+  ),
+];
+
+
+
 
   static List<Fortune> icons = <Fortune>[
     const Fortune(

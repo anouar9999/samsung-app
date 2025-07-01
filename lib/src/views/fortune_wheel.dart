@@ -1,18 +1,23 @@
+import 'dart:async';
 import 'dart:math';
-import 'dart:ui';
+import 'package:flutter_fortune_wheel/src/models/product_manager.dart';
+import 'package:flutter_fortune_wheel/src/pages/quantities_page.dart';
+import 'package:flutter_fortune_wheel/src/views/stress_test.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:sqflite/sqflite.dart';
+import 'dart:io' as io;
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 import 'package:flutter_fortune_wheel/src/helpers/constant.dart';
 import 'package:flutter_fortune_wheel/src/models/models.dart';
-import 'package:flutter_fortune_wheel/src/pages/soufleur.dart';
-import 'package:flutter_fortune_wheel/src/pages/your_gain.dart';
 import 'package:flutter_fortune_wheel/src/views/arrow_view.dart';
 import 'package:flutter_fortune_wheel/src/views/board_view.dart';
 
 import '../core/core.dart';
-import 'package:confetti/confetti.dart';
 
 class FortuneWheel extends StatefulWidget {
   const FortuneWheel({
@@ -47,7 +52,6 @@ class _FortuneWheelState extends State<FortuneWheel>
     with SingleTickerProviderStateMixin {
   late AnimationController _wheelAnimationController;
   late Animation _wheelAnimation;
-  late ConfettiController _confettiController;
 
   ///Wheel rotation angle
   ///Default value [_angle] = 0
@@ -81,20 +85,374 @@ class _FortuneWheelState extends State<FortuneWheel>
       parent: _wheelAnimationController,
       curve: Curves.fastLinearToSlowEaseIn,
     );
-    _confettiController =
-        ConfettiController(duration: const Duration(seconds: 5));
+    ProductManager.loadDailyQuantities();
   }
 
   @override
   void dispose() {
     super.dispose();
-    _confettiController.dispose(); // Add this line to dispose the controller
-
     _wheelAnimationController.dispose();
+  }
+
+  Widget _buildStressTestButton() {
+    return Positioned(
+      top: 5,
+      left: 20,
+      child: FloatingActionButton.extended(
+        onPressed:
+            StressTestManager.isStressTesting ? null : _showStressTestDialog,
+        backgroundColor:
+            StressTestManager.isStressTesting ? Colors.grey : Colors.red[600],
+        foregroundColor: Colors.white,
+        heroTag: "stress_test_button",
+        icon: StressTestManager.isStressTesting
+            ? SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              )
+            : Icon(Icons.speed, size: 20),
+        label: Text(
+          StressTestManager.isStressTesting ? 'Testing...' : '50 Spins',
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+        ),
+      ),
+    );
+  }
+
+  void _navigateToQuantitiesPage() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => QuantitiesPage()),
+    );
+  }
+
+  void _showStressTestDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return StressTestWidget(wheelItems: widget.wheel.items);
+      },
+    );
+  }
+
+  Widget _buildProductsQuantityList() {
+    return StatefulBuilder(
+      builder: (context, setState) {
+        Map<String, int> quantities = {};
+        bool isLoading = true;
+
+        // Load quantities
+        Future<void> loadQuantities() async {
+          await ProductManager.loadDailyQuantities();
+
+          ['1', '2', '3', '4', '5'].forEach((id) {
+            quantities[id] = ProductManager.getRemainingQuantity(id);
+          });
+
+          setState(() => isLoading = false);
+        }
+
+        // Auto-refresh every 5 seconds
+        Timer.periodic(Duration(seconds: 5), (timer) {
+          if (context.mounted) {
+            loadQuantities();
+          } else {
+            timer.cancel();
+          }
+        });
+
+        // Initial load
+        loadQuantities();
+
+        if (isLoading) {
+          return Center(child: CircularProgressIndicator());
+        }
+
+        return Container(
+          padding: EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.inventory, color: Colors.blue[600], size: 24),
+                  SizedBox(width: 8),
+                  Text(
+                    'Produits Disponibles Aujourd\'hui',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: 4),
+              Text(
+                ProductManager.getCurrentDateKey(),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[600],
+                ),
+              ),
+              SizedBox(height: 16),
+              ...['1', '2', '3', '4', '5']
+                  .map((id) => _buildProductRow(id, quantities)),
+              SizedBox(height: 12),
+              Container(
+                padding: EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue[200]!),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.blue[600], size: 20),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Les quantités se remettent à zéro chaque jour',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.blue[800],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildProductRow(String id, Map<String, int> quantities) {
+    final quantity = quantities[id] ?? 0;
+    final productName = ProductManager.getProductName(id);
+    final isAvailable = quantity > 0;
+
+    return Container(
+      margin: EdgeInsets.only(bottom: 8),
+      padding: EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isAvailable ? Colors.green[50] : Colors.red[50],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isAvailable ? Colors.green[200]! : Colors.red[200]!,
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: isAvailable ? Colors.green[100] : Colors.red[100],
+            ),
+            child: Icon(
+              isAvailable ? Icons.check_circle : Icons.cancel,
+              color: isAvailable ? Colors.green[600] : Colors.red[600],
+              size: 24,
+            ),
+          ),
+          SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  productName,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87,
+                  ),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  isAvailable ? 'Disponible' : 'Épuisé',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isAvailable ? Colors.green[600] : Colors.red[600],
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: isAvailable ? Colors.green[600] : Colors.red[600],
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              '$quantity',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAdminPanel() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return Dialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          child: Container(
+            width: MediaQuery.of(context).size.width * 0.9,
+            height: MediaQuery.of(context).size.height * 0.7,
+            child: Column(
+              children: [
+                Container(
+                  padding: EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.blue[600],
+                    borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(20),
+                      topRight: Radius.circular(20),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Panneau d\'Administration',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: Icon(Icons.close, color: Colors.white),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: _buildProductsQuantityList(),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showWinningItemDialog(Fortune winningItem) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Text(
+            '🎉 Congratulations! 🎉',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: Colors.amber[700],
+            ),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Display the winning item icon if available
+
+              SizedBox(height: 20),
+              Text(
+                'You won:',
+                style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+              ),
+              SizedBox(height: 8),
+              Text(
+                winningItem.titleName ?? 'Unknown Prize',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+
+              SizedBox(height: 20),
+              Container(
+                padding: EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.amber[50],
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.amber[200]!),
+                ),
+                child: Text(
+                  '🎊 Enjoy your prize! 🎊',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.amber[800],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              style: TextButton.styleFrom(
+                backgroundColor: Colors.amber,
+                padding: EdgeInsets.symmetric(horizontal: 30, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(25),
+                ),
+              ),
+              child: Text(
+                'Awesome!',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   List<int> winCountsPerPeriod = [0, 0, 0, 0];
   List<int> stocksPerPeriod = [stock1, stock2, stock3, stock4];
+  bool _isStressTesting = false;
+  int _currentTestSpin = 0;
+  int _totalTestSpins = 200;
+  Map<String, int> _testResults = {};
+  List<String> _testLog = [];
+  DateTime? _testStartTime;
   @override
   Widget build(BuildContext context) {
     final deviceSize = MediaQuery.of(context).size;
@@ -136,7 +494,7 @@ class _FortuneWheelState extends State<FortuneWheel>
                       child: child,
                     ),
                     _buildCenterOfWheel(),
-                    // _buildButtonSpin(),
+                    _buildButtonSpin(),
                   ],
                 );
               },
@@ -146,7 +504,728 @@ class _FortuneWheelState extends State<FortuneWheel>
               width: wheelSize,
               child: Align(
                 alignment: const Alignment(1.08, 0),
-                child:   ArrowView(),
+                child: widget.wheel.arrowView ?? const ArrowView(),
+              ),
+            ),
+            _buildStressTestButton(),
+          ],
+        );
+      },
+    );
+  }
+
+  ///UI Wheel center
+  Widget _buildCenterOfWheel() {
+    return Image.asset(
+      "assets/icons/go.png",
+      width: 100,
+    );
+  }
+
+  Widget _buildStressTestWidget() {
+    return Container(
+      padding: EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.red[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.red[200]!, width: 2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.speed, color: Colors.red[600], size: 24),
+              SizedBox(width: 8),
+              Text(
+                'Test de Stress - 200 Spins',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.red[800],
+                ),
+              ),
+            ],
+          ),
+          if (!_isStressTesting) ...[
+            SizedBox(height: 12),
+            Text(
+              'Ce test va simuler 200 spins automatiques pour vérifier que le système de quantités fonctionne correctement.',
+              style: TextStyle(fontSize: 14, color: Colors.grey[700]),
+            ),
+            SizedBox(height: 16),
+
+            // Test configuration
+            Container(
+              padding: EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.grey[300]!),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Configuration du Test:',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  SizedBox(height: 8),
+                  Text('• Nombre de spins: $_totalTestSpins'),
+                  Text('• Vitesse: 10 spins/seconde'),
+                  Text('• Logs détaillés: Oui'),
+                  Text('• Vérification en temps réel: Oui'),
+                ],
+              ),
+            ),
+
+            SizedBox(height: 16),
+
+            // Start test button
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _startStressTest,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red[600],
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                ),
+                child: Text(
+                  'DÉMARRER LE TEST DE STRESS',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+          ],
+          if (_isStressTesting) ...[
+            SizedBox(height: 12),
+
+            // Progress indicator
+            Container(
+              padding: EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue[50],
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Progression:',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
+                      Text('$_currentTestSpin / $_totalTestSpins'),
+                    ],
+                  ),
+                  SizedBox(height: 8),
+                  LinearProgressIndicator(
+                    value: _currentTestSpin / _totalTestSpins,
+                    backgroundColor: Colors.grey[300],
+                    valueColor:
+                        AlwaysStoppedAnimation<Color>(Colors.blue[600]!),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'Temps écoulé: ${_getElapsedTime()}',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  ),
+                ],
+              ),
+            ),
+
+            SizedBox(height: 12),
+
+            // Real-time results
+            Container(
+              padding: EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.grey[300]!),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Résultats en Temps Réel:',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  SizedBox(height: 8),
+                  ..._testResults.entries.map((entry) {
+                    final productName =
+                        ProductManager.getProductName(entry.key);
+                    final wins = entry.value;
+                    final remaining =
+                        ProductManager.getRemainingQuantity(entry.key);
+
+                    return Padding(
+                      padding: EdgeInsets.only(bottom: 4),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('$productName:', style: TextStyle(fontSize: 12)),
+                          Text('$wins gagnés, $remaining restants',
+                              style: TextStyle(
+                                  fontSize: 12, fontWeight: FontWeight.w500)),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ],
+              ),
+            ),
+
+            SizedBox(height: 12),
+
+            // Stop button
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _stopStressTest,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange[600],
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                ),
+                child: Text('ARRÊTER LE TEST'),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  String _getElapsedTime() {
+    if (_testStartTime == null) return '0s';
+    final elapsed = DateTime.now().difference(_testStartTime!);
+    if (elapsed.inMinutes > 0) {
+      return '${elapsed.inMinutes}m ${elapsed.inSeconds % 60}s';
+    }
+    return '${elapsed.inSeconds}s';
+  }
+
+  Future<void> _startStressTest() async {
+    print('🚀 STARTING 200 SPIN STRESS TEST');
+
+    setState(() {
+      _isStressTesting = true;
+      _currentTestSpin = 0;
+      _testResults.clear();
+      _testLog.clear();
+      _testStartTime = DateTime.now();
+    });
+
+    // Initialize test results
+    for (final id in ['1', '2', '3', '4', '5', '99']) {
+      _testResults[id] = 0;
+    }
+
+    // Log initial state
+    _logTestState('INITIAL STATE');
+
+    // Run 200 spins
+    for (int i = 1; i <= _totalTestSpins && _isStressTesting; i++) {
+      await _performStressTestSpin(i);
+
+      // Update UI every 10 spins
+      if (i % 10 == 0) {
+        setState(() {
+          _currentTestSpin = i;
+        });
+
+        // Small delay to allow UI updates
+        await Future.delayed(Duration(milliseconds: 100));
+      }
+    }
+
+    if (_isStressTesting) {
+      _completeStressTest();
+    }
+  }
+
+  Future<void> _performStressTestSpin(int spinNumber) async {
+    // Get available items (this is your existing logic)
+    final availableItems = ProductManager.getAvailableItems(widget.wheel.items);
+
+    if (availableItems.isEmpty) {
+      _testLog.add(
+          'Spin $spinNumber: NO PRODUCTS AVAILABLE - Test should end here');
+      print('⚠️  Spin $spinNumber: NO PRODUCTS AVAILABLE');
+      return;
+    }
+
+    // Simulate random selection from available items
+    final selectedItem =
+        availableItems[Random().nextInt(availableItems.length)];
+    final productId = selectedItem.id.toString();
+
+    // Log before consumption
+    final beforeQty = ProductManager.getRemainingQuantity(productId);
+    final beforeAvailable = ProductManager.isProductAvailable(productId);
+
+    // Try to consume the product
+    final consumed = ProductManager.consumeProduct(productId);
+
+    // Log after consumption
+    final afterQty = ProductManager.getRemainingQuantity(productId);
+    final afterAvailable = ProductManager.isProductAvailable(productId);
+
+    // Record the result
+    if (consumed) {
+      _testResults[productId] = (_testResults[productId] ?? 0) + 1;
+    }
+
+    // Detailed logging
+    final productName = ProductManager.getProductName(productId);
+    final logEntry =
+        'Spin $spinNumber: $productName (ID:$productId) - Before:$beforeQty/$beforeAvailable, After:$afterQty/$afterAvailable, Consumed:$consumed';
+    _testLog.add(logEntry);
+
+    print('🎯 $logEntry');
+
+    // Validate consumption logic
+    if (beforeAvailable && !consumed) {
+      print('❌ ERROR: Product was available but consumption failed!');
+      _testLog
+          .add('ERROR in spin $spinNumber: Available product not consumed!');
+    }
+
+    if (!beforeAvailable && consumed) {
+      print('❌ ERROR: Unavailable product was consumed!');
+      _testLog.add('ERROR in spin $spinNumber: Unavailable product consumed!');
+    }
+
+    if (consumed && beforeQty == afterQty) {
+      print('❌ ERROR: Quantity did not decrease after consumption!');
+      _testLog.add('ERROR in spin $spinNumber: Quantity not decremented!');
+    }
+  }
+
+  void _stopStressTest() {
+    setState(() {
+      _isStressTesting = false;
+    });
+
+    print('🛑 STRESS TEST STOPPED at spin $_currentTestSpin');
+    _showStressTestResults();
+  }
+
+  void _completeStressTest() {
+    setState(() {
+      _isStressTesting = false;
+      _currentTestSpin = _totalTestSpins;
+    });
+
+    print('✅ STRESS TEST COMPLETED - 200 spins finished');
+    _logTestState('FINAL STATE');
+    _showStressTestResults();
+  }
+
+  void _logTestState(String phase) {
+    print('📊 $phase:');
+    for (final id in ['1', '2', '3', '4', '5']) {
+      final productName = ProductManager.getProductName(id);
+      final remaining = ProductManager.getRemainingQuantity(id);
+      final available = ProductManager.isProductAvailable(id);
+      final won = _testResults[id] ?? 0;
+
+      print(
+          '   $productName: $remaining remaining, available:$available, won:$won times');
+    }
+  }
+
+  void _showStressTestResults() {
+    final duration = _testStartTime != null
+        ? DateTime.now().difference(_testStartTime!)
+        : Duration.zero;
+
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        child: Container(
+          width: MediaQuery.of(context).size.width * 0.9,
+          height: MediaQuery.of(context).size.height * 0.8,
+          padding: EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '📊 Résultats du Test de Stress',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: Icon(Icons.close),
+                  ),
+                ],
+              ),
+
+              SizedBox(height: 16),
+
+              // Summary
+              Container(
+                padding: EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue[50],
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Résumé:',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    Text(
+                        'Spins effectués: $_currentTestSpin / $_totalTestSpins'),
+                    Text('Durée: ${duration.inSeconds}s'),
+                    Text(
+                        'Vitesse: ${(_currentTestSpin / duration.inSeconds).toStringAsFixed(1)} spins/s'),
+                  ],
+                ),
+              ),
+
+              SizedBox(height: 16),
+
+              // Results per product
+              Text('Résultats par Produit:',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(height: 8),
+
+              ...['1', '2', '3', '4', '5'].map((id) {
+                final productName = ProductManager.getProductName(id);
+                final won = _testResults[id] ?? 0;
+                final remaining = ProductManager.getRemainingQuantity(id);
+                final totalDaily = ProductManager.dailyQuantities[id]
+                        ?[ProductManager.getCurrentDateKey()] ??
+                    0;
+                final consumed = totalDaily - remaining;
+
+                return Container(
+                  margin: EdgeInsets.only(bottom: 8),
+                  padding: EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey[300]!),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(productName,
+                          style: TextStyle(fontWeight: FontWeight.bold)),
+                      Text('Gagné pendant le test: $won fois'),
+                      Text('Limite quotidienne: $totalDaily'),
+                      Text('Consommé total: $consumed'),
+                      Text('Restant: $remaining'),
+                      if (consumed > totalDaily)
+                        Text('❌ ERREUR: Plus consommé que disponible!',
+                            style: TextStyle(
+                                color: Colors.red,
+                                fontWeight: FontWeight.bold)),
+                      if (consumed <= totalDaily)
+                        Text('✅ Quantités correctes',
+                            style: TextStyle(
+                                color: Colors.green,
+                                fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                );
+              }).toList(),
+
+              SizedBox(height: 16),
+
+              // Detailed logs
+              Text('Logs Détaillés:',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(height: 8),
+
+              Expanded(
+                child: Container(
+                  padding: EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[100],
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: _testLog
+                          .map((log) => Padding(
+                                padding: EdgeInsets.only(bottom: 2),
+                                child: Text(
+                                  log,
+                                  style: TextStyle(
+                                      fontSize: 10, fontFamily: 'monospace'),
+                                ),
+                              ))
+                          .toList(),
+                    ),
+                  ),
+                ),
+              ),
+
+              SizedBox(height: 16),
+
+              // Action buttons
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () {
+                        _exportTestResults();
+                        Navigator.pop(context);
+                      },
+                      child: Text('Exporter Logs'),
+                    ),
+                  ),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () {
+                        // _resetAllQuantities();
+                        Navigator.pop(context);
+                      },
+                      style:
+                          ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                      child: Text('Reset & Nouveau Test'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _exportTestResults() {
+    print('📄 EXPORTING TEST RESULTS:');
+    print('='.padRight(50, '='));
+    print('Test Duration: ${_getElapsedTime()}');
+    print('Spins Completed: $_currentTestSpin / $_totalTestSpins');
+    print('');
+    print('RESULTS BY PRODUCT:');
+
+    for (final id in ['1', '2', '3', '4', '5']) {
+      final productName = ProductManager.getProductName(id);
+      final won = _testResults[id] ?? 0;
+      final remaining = ProductManager.getRemainingQuantity(id);
+      final totalDaily = ProductManager.dailyQuantities[id]
+              ?[ProductManager.getCurrentDateKey()] ??
+          0;
+      final consumed = totalDaily - remaining;
+
+      print('$productName:');
+      print('  Won during test: $won');
+      print('  Daily limit: $totalDaily');
+      print('  Total consumed: $consumed');
+      print('  Remaining: $remaining');
+      print('  Status: ${consumed <= totalDaily ? 'OK' : 'ERROR'}');
+      print('');
+    }
+
+    print('DETAILED LOGS:');
+    for (final log in _testLog) {
+      print(log);
+    }
+    print('='.padRight(50, '='));
+  }
+
+// Update your admin panel to include the stress test widget:
+  ///UI Button Spin
+  Widget _buildButtonSpin() {
+    return Visibility(
+      visible: !_wheelAnimationController.isAnimating,
+      child: widget.wheel.action ??
+          TextButton(
+            onPressed: _handleSpinByRandomPressed,
+            style: widget.wheel.spinButtonStyle ??
+                TextButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                ),
+            child: widget.wheel.childSpinButton ??
+                Text(
+                  widget.wheel.titleSpinButton ?? '',
+                  style: const TextStyle(fontSize: 16, color: Colors.white),
+                ),
+          ),
+    );
+  }
+
+  ///Handling mode random spinning
+  // Future<void> _handleSpinByRandomPressed() async {
+  //   if (!_wheelAnimationController.isAnimating) {
+  //     //Random hệ số thập phân từ 0 đến 1
+  //     double randomDouble = Random().nextDouble();
+  //     //random theo số phần tử
+  //     int randomLength = Random().nextInt(widget.wheel.items.length);
+  //     _angle =
+  //         (randomDouble + widget.wheel.rotationCount + randomLength) * 2 * pi;
+  //     await Future.microtask(() => widget.onAnimationStart?.call());
+  //     await _wheelAnimationController.forward(from: 0.0).then((_) {
+  //       double factor = _currentAngle / (2 * pi);
+  //       factor += _angle / (2 * pi);
+  //       factor %= 1;
+  //       _currentAngle = factor * 2 * pi;
+  //       widget.onResult.call(widget.wheel.items[_indexResult]);
+  //       _wheelAnimationController.reset();
+  //     });
+  //     await Future.microtask(() => widget.onAnimationEnd?.call());
+
+  //     // Show popup with the winning item
+  //     Fortune winningItem = widget.wheel.items[_indexResult];
+
+  //     // Add a small delay before showing the popup for better UX
+  //     await Future.delayed(Duration(milliseconds: 500));
+
+  //     // Choose which popup style you prefer:
+  //     _showWinningItemDialog(winningItem); // Simple version
+  //     // OR
+  //     // _showAnimatedWinningDialog(winningItem);  // Animated version
+  //   }
+  // }
+  Future<void> _handleSpinByRandomPressed() async {
+    if (!_wheelAnimationController.isAnimating) {
+      // Get available items based on daily quantities
+      final availableItems =
+          ProductManager.getAvailableItems(widget.wheel.items);
+
+      if (availableItems.isEmpty) {
+        _showNoProductsDialog();
+        return;
+      }
+
+      // Find indices of available items in the wheel
+      final availableIndices = <int>[];
+      for (int i = 0; i < widget.wheel.items.length; i++) {
+        final item = widget.wheel.items[i];
+        if (availableItems.any((available) => available.id == item.id)) {
+          availableIndices.add(i);
+        }
+      }
+
+      // Smart spin to land on available item
+      final targetIndex =
+          availableIndices[Random().nextInt(availableIndices.length)];
+
+      final itemCount = widget.wheel.items.length;
+      final angleFactor = _currentIndex > targetIndex
+          ? _currentIndex - targetIndex
+          : itemCount - (targetIndex - _currentIndex);
+      _angle = (2 * pi / itemCount) * angleFactor +
+          widget.wheel.rotationCount * 2 * pi;
+
+      await Future.microtask(() => widget.onAnimationStart?.call());
+      await _wheelAnimationController.forward(from: 0.0).then((_) {
+        double factor = _currentAngle / (2 * pi);
+        factor += _angle / (2 * pi);
+        factor %= 1;
+        _currentAngle = factor * 2 * pi;
+        _wheelAnimationController.reset();
+        _currentIndex = targetIndex;
+        widget.onResult.call(widget.wheel.items[_currentIndex]);
+      });
+      await Future.microtask(() => widget.onAnimationEnd?.call());
+
+      // Handle the result with quantity management
+      await _handleSpinResult();
+    }
+  }
+
+  Future<void> _handleSpinResult() async {
+    final winningItem = widget.wheel.items[_currentIndex];
+
+    // Try to consume the product
+    final consumed = ProductManager.consumeProduct(winningItem.id);
+
+    if (consumed) {
+      if (winningItem.id == 99) {
+        // "Pas de chance" - losing case
+        totalLosses++;
+
+        _showLosingDialog(winningItem);
+      } else {
+        // Real prize won
+        totalWins++;
+
+        _showWinningDialog(winningItem);
+      }
+    } else {
+      // Product no longer available (shouldn't happen with smart spin)
+      _showProductUnavailableDialog(winningItem);
+    }
+  }
+
+  void _showWinningDialog(Fortune winningItem) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text(
+            '🎉 Félicitations! 🎉',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: Colors.green,
+            ),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 100,
+                height: 100,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: winningItem.backgroundColor,
+                  border: Border.all(color: Colors.green, width: 3),
+                ),
+                child: winningItem.icon,
+              ),
+              SizedBox(height: 20),
+              Text(
+                'Vous avez gagné:',
+                style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+              ),
+              SizedBox(height: 8),
+              Text(
+                winningItem.titleName ?? 'Unknown Prize',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+              SizedBox(height: 16),
+              Text(
+                'Restant aujourd\'hui: ${ProductManager.getRemainingQuantity(winningItem.id)}',
+                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              style: TextButton.styleFrom(
+                backgroundColor: Colors.green,
+                padding: EdgeInsets.symmetric(horizontal: 30, vertical: 12),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(25)),
+              ),
+              child: Text(
+                'Récupérer le prix!',
+                style:
+                    TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
               ),
             ),
           ],
@@ -155,666 +1234,99 @@ class _FortuneWheelState extends State<FortuneWheel>
     );
   }
 
-  ///UI Wheel center
-Widget _buildCenterOfWheel() {
-  return LayoutBuilder(
-    builder: (context, constraints) {
-      // Get the screen size
-      final screenSize = MediaQuery.of(context).size;
-      final shortestSide = screenSize.shortestSide;
-      
-      // Calculate responsive dimensions
-      final baseSize = (shortestSide * 0.25).clamp(100.0, 200.0);
-      final marginSize = (baseSize * 0.053).clamp(4.0, 12.0);
-      final borderWidth = (baseSize * 0.013).clamp(1.0, 3.0);
-      final paddingSize = (baseSize * 0.1).clamp(10.0, 20.0);
-      
-      // Calculate responsive shadow values
-      final blurRadius = (baseSize * 0.1).clamp(10.0, 20.0);
-      final spreadRadius = (baseSize * 0.007).clamp(0.5, 2.0);
-      final shadowOffset = (baseSize * 0.033).clamp(3.0, 8.0);
-
-      return Container(
-        width: baseSize,
-        height: baseSize,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Colors.grey[300]!,
-              Colors.white,
-              Colors.grey[100]!,
-            ],
-            stops: const [0.0, 0.5, 1.0],
-          ),
-          boxShadow: [
-            // Outer shadow
-            BoxShadow(
-              color: Colors.black.withOpacity(0.25),
-              blurRadius: blurRadius,
-              offset: Offset(0, shadowOffset),
-              spreadRadius: spreadRadius,
-            ),
-            // Inner highlight
-            BoxShadow(
-              color: Colors.white.withOpacity(0.9),
-              blurRadius: blurRadius,
-              offset: Offset(-shadowOffset, -shadowOffset),
-              spreadRadius: spreadRadius,
-            ),
-          ],
-        ),
-        child: Container(
-          margin: EdgeInsets.all(marginSize),
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: Colors.transparent,
-            border: Border.all(
-              color: Colors.white.withOpacity(0.5),
-              width: borderWidth,
-            ),
-            gradient: RadialGradient(
-              colors: [
-                Colors.white.withOpacity(0.9),
-                Colors.grey[100]!.withOpacity(0.8),
-                Colors.grey[300]!.withOpacity(0.5),
-              ],
-              stops: const [0.2, 0.6, 1.0],
+  void _showLosingDialog(Fortune winningItem) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text(
+            '😔 Pas de chance!',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: Colors.red,
             ),
           ),
-          child: Container(
-            margin: EdgeInsets.all(marginSize * 0.5),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: Colors.grey[300]!,
-                width: borderWidth * 0.5,
-              ),
-            ),
-            child: ClipOval(
-              child: Container(
-                padding: EdgeInsets.all(paddingSize),
-                child: Container(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.transparent,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: blurRadius * 0.33,
-                        spreadRadius: spreadRadius,
-                        offset: Offset(0, shadowOffset * 0.4),
-                      ),
-                    ],
-                  ),
-                  child: Container(), // Placeholder for image
-                  // Uncomment below when ready to use image
-                  // child: Image.asset(
-                  //   "assets/icons/Layer 1.png",
-                  //   fit: BoxFit.contain,
-                  // ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-    },
-  );
-}
-  ///UI Button Spin
-Widget _buildButtonSpin() {
-  return LayoutBuilder(
-    builder: (context, constraints) {
-      // Calculate responsive sizes
-      final buttonWidth = (constraints.maxWidth * 0.3).clamp(120.0, 200.0);
-      final buttonHeight = (buttonWidth * 0.4).clamp(48.0, 64.0);
-      final fontSize = (buttonWidth * 0.15).clamp(14.0, 24.0);
-      
-      return Visibility(
-        visible: !_wheelAnimationController.isAnimating,
-        child: widget.wheel.action ?? 
-        Container(
-          width: buttonWidth,
-          height: buttonHeight,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(buttonHeight / 2),
-           
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.25),
-                blurRadius: 8,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: TextButton(
-            onPressed: _handleSpinByRandomPressed,
-            style: widget.wheel.spinButtonStyle ??
-            TextButton.styleFrom(
-              backgroundColor: Colors.transparent,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(buttonHeight / 2),
-              ),
-              padding: EdgeInsets.symmetric(
-                horizontal: buttonWidth * 0.1,
-                vertical: buttonHeight * 0.1,
-              ),
-            ),
-            child: widget.wheel.childSpinButton ??
-            Container()
-          ),
-        ),
-      );
-    },
-  );
-}
-  ///Handling mode random spinning
-Future<void> _handleSpinByRandomPressed() async {
-  if (_wheelAnimationController.isAnimating) return;
-
-  try {
-    final random = Random();
-    
-    // First, decide the winning index
-    final winningIndex = random.nextInt(widget.wheel.items.length);
-    
-    // Calculate required angle to land on this index
-    final baseAngle = (2 * pi / widget.wheel.items.length) * winningIndex;
-    final fullRotations = widget.wheel.rotationCount * 2 * pi;
-    final fineAdjustment = random.nextDouble() * (2 * pi / widget.wheel.items.length / 2);
-    
-    // Final angle combines full rotations and position for winning index
-    _angle = fullRotations + baseAngle + fineAdjustment;
-
-    // Start animation
-    await Future.microtask(() => widget.onAnimationStart?.call());
-    await _wheelAnimationController.forward(from: 0.0);
-
-    // Update current angle
-    final factor = (_currentAngle / (2 * pi) + _angle / (2 * pi)) % 1;
-    _currentAngle = factor * 2 * pi;
-    
-    // Get winning item using the predetermined index
-    final winningItem = widget.wheel.items[winningIndex];
-    widget.onResult.call(winningItem);
-    
-    _wheelAnimationController.reset();
-
-    // Show winner dialog
-    await _showWinnerDialog(context, winningItem);
-    
-    await Future.microtask(() => widget.onAnimationEnd?.call());
-    
-  } catch (error) {
-    debugPrint('Error during spin: $error');
-  }
-}
-
-Future<void> _showWinnerDialog(BuildContext context, Fortune winningItem) async {
-  final Size screenSize = MediaQuery.of(context).size;
-  final double dialogWidth = screenSize.width < 600 ? screenSize.width * 0.85 : 400.0;
-
-  showGeneralDialog(
-    context: context,
-    pageBuilder: (context, animation1, animation2) {
-      return Stack(
-        children: [
-          // Backdrop
-          Positioned.fill(
-            child: GestureDetector(
-              onTap: () => Navigator.pop(context),
-              child: Container(
-                color: Colors.black.withOpacity(0.7),
-              ),
-            ),
-          ),
-
-          // Dialog Content
-          Positioned.fill(
-            child: Material(
-              color: Colors.transparent,
-              child: Stack(
-                children: [
-                  // Center Dialog
-                  Center(
-                    child: TweenAnimationBuilder<double>(
-                      duration: const Duration(milliseconds: 400),
-                      tween: Tween(begin: 0.0, end: 1.0),
-                      builder: (context, value, child) {
-                        return Transform.scale(
-                          scale: 0.8 + (0.2 * value),
-                          child: Opacity(
-                            opacity: value,
-                            child: child,
-                          ),
-                        );
-                      },
-                      child: GestureDetector(
-                        onTap: () {}, // Prevents tap from propagating
-                        child: Container(
-                          width: dialogWidth,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF171717),
-                            borderRadius: BorderRadius.circular(24),
-                          ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              // Close Button
-                              Align(
-                                alignment: Alignment.topRight,
-                                child: IconButton(
-                                  icon: const Icon(Icons.close, color: Colors.white),
-                                  onPressed: () => Navigator.pop(context),
-                                ),
-                              ),
-                              
-                              // Content
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    const Text(
-                                      'CONGRATULATIONS!',
-                                      style: TextStyle(
-                                        fontSize: 20,
-                                        color: Color(0xFF0098FF),
-                                        fontWeight: FontWeight.bold,
-                                        letterSpacing: 1.2,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 24),
-                                    
-                                    const Text(
-                                      "You've won",
-                                      style: TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 24),
-                                    
-                                    // Enhanced Prize Display
-                                    Container(
-                                      width: double.infinity,
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 20,
-                                        vertical: 28,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFF2A2A2A),
-                                        borderRadius: BorderRadius.circular(16),
-                                      ),
-                                      child: Column(
-                                        children: [
-                                          // Prize Icon if available
-                                          if (winningItem.icon != null) ...[
-                                            SizedBox(
-                                              height: 64,
-                                              child: winningItem.icon,
-                                            ),
-                                            const SizedBox(height: 20),
-                                          ],
-                                          
-                                          // Prize Name
-                                          FittedBox(
-                                            fit: BoxFit.scaleDown,
-                                            child: Text(
-                                              winningItem.titleName?.toUpperCase() ?? '',
-                                              style: const TextStyle(
-                                                fontSize: 44,
-                                                color: Colors.white,
-                                                fontWeight: FontWeight.w800,
-                                                letterSpacing: 1.5,
-                                                height: 1.2,
-                                              ),
-                                              textAlign: TextAlign.center,
-                                              maxLines: 2,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    
-                                    const SizedBox(height: 32),
-                                    
-                                    // Claim Button
-                                ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  // Confetti Layer
-                  ...List.generate(3, (index) {
-                    Alignment alignment;
-                    double? blastDirection;
-                    List<Color> colors = const [
-                      Color(0xFF0098FF),
-                      Color(0xFFFFD700),
-                      Color(0xFF00C754),
-                      Color(0xFFFF2D55),
-                      Colors.white,
-                    ];
-
-                    switch (index) {
-                      case 0:
-                        alignment = Alignment.topCenter;
-                        break;
-                      case 1:
-                        alignment = const Alignment(-0.8, -0.8);
-                        blastDirection = pi / 4;
-                        break;
-                      default:
-                        alignment = const Alignment(0.8, -0.8);
-                        blastDirection = 3 * pi / 4;
-                        break;
-                    }
-
-                    return Align(
-                      alignment: alignment,
-                      child: ConfettiWidget(
-                        confettiController: _confettiController,
-                        blastDirectionality: blastDirection == null 
-                            ? BlastDirectionality.explosive 
-                            : BlastDirectionality.directional,
-                        particleDrag: 0.05,
-                        emissionFrequency: 0.03,
-                        numberOfParticles: index == 0 ? 50 : 25,
-                        maxBlastForce: 25,
-                        minBlastForce: 15,
-                        gravity: 0.2,
-                        colors: colors,
-                      ),
-                    );
-                  }),
-                ],
-              ),
-            ),
-          ),
-        ],
-      );
-    },
-    barrierDismissible: true,
-    barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
-    transitionDuration: const Duration(milliseconds: 300),
-    transitionBuilder: (context, animation, secondaryAnimation, child) {
-      return FadeTransition(
-        opacity: CurvedAnimation(
-          parent: animation,
-          curve: Curves.easeOut,
-        ),
-        child: child,
-      );
-    },
-  );
-
-  // Start confetti after dialog is shown
-  _confettiController.play();
-}
-
-Widget _buildConfettiOverlay() {
-  return Stack(
-    children: [
-      // Center burst
-      Align(
-        alignment: Alignment.topCenter,
-        child: ConfettiWidget(
-          confettiController: _confettiController,
-          blastDirectionality: BlastDirectionality.explosive,
-          particleDrag: 0.05,
-          emissionFrequency: 0.08,
-          numberOfParticles: 30,
-          maxBlastForce: 20,
-          minBlastForce: 10,
-          gravity: 0.2,
-          colors: const [
-            Color(0xFF0098FF),  // Electric Blue
-            Color(0xFFFFD700),  // Sunny Yellow
-            Color(0xFF008754),  // Sprite Green
-            Colors.white,
-          ],
-        ),
-      ),
-      // Left burst
-      Align(
-        alignment: const Alignment(-0.8, -0.8),
-        child: ConfettiWidget(
-          confettiController: _confettiController,
-          blastDirection: pi / 4,
-          particleDrag: 0.05,
-          emissionFrequency: 0.08,
-          numberOfParticles: 15,
-          colors: const [
-            Color(0xFF0098FF),
-            Color(0xFFFFD700),
-          ],
-        ),
-      ),
-      // Right burst
-      Align(
-        alignment: const Alignment(0.8, -0.8),
-        child: ConfettiWidget(
-          confettiController: _confettiController,
-          blastDirection: 3 * pi / 4,
-          particleDrag: 0.05,
-          emissionFrequency: 0.08,
-          numberOfParticles: 15,
-          colors: const [
-            Color(0xFF008754),
-            Colors.white,
-          ],
-        ),
-      ),
-    ],
-  );
-}
-
-Widget _buildPrizeDescriptionBox(Fortune prize) {
-  return Container(
-    padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-    decoration: BoxDecoration(
-      color: const Color(0xFF2A2A2A),
-      borderRadius: BorderRadius.circular(16),
-    ),
-    child: Column(
-      children: [
-        if (prize.icon != null)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 16),
-            child: SizedBox(
-              height: 64,
-              child: prize.icon,
-            ),
-          ),
-        RichText(
-          textAlign: TextAlign.center,
-          text: TextSpan(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              const TextSpan(
-                text: 'You\'ve won\n',
-                style: TextStyle(fontSize: 16, color: Colors.white70),
-              ),
-              TextSpan(
-                text: '${prize.titleName}\n',
-                style: const TextStyle(
-                  fontSize: 24,
-                  color: Color(0xFF0098FF),
-                  fontWeight: FontWeight.bold,
-                  height: 1.5,
+              Container(
+                width: 100,
+                height: 100,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: winningItem.backgroundColor,
+                  border: Border.all(color: Colors.red, width: 3),
                 ),
+                child: winningItem.icon,
+              ),
+              SizedBox(height: 20),
+              Text(
+                'Essayez encore!',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+              SizedBox(height: 16),
+              Text(
+                'Meilleure chance la prochaine fois!',
+                style: TextStyle(fontSize: 14, color: Colors.grey[600]),
               ),
             ],
           ),
-        ),
-      ],
-    ),
-  );
-}
+          actions: [],
+        );
+      },
+    );
+  }
 
-Widget _buildClaimButton(BuildContext context) {
-  return Container(
-    width: double.infinity,
-    height: 56,
-    decoration: BoxDecoration(
-      gradient: const LinearGradient(
-        colors: [Color(0xFF0098FF), Color(0xFF008754)],
-      ),
-      borderRadius: BorderRadius.circular(28),
-      boxShadow: [
-        BoxShadow(
-          color: const Color(0xFF0098FF).withOpacity(0.2),
-          blurRadius: 8,
-          offset: const Offset(0, 4),
-        ),
-      ],
-    ),
-    child: MaterialButton(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-      onPressed: () => Navigator.of(context).pop(),
-      child: const Text(
-        'CLAIM YOUR PRIZE',
-        style: TextStyle(
-          color: Colors.white,
-          fontSize: 18,
-          fontWeight: FontWeight.bold,
-          letterSpacing: 1,
-        ),
-      ),
-    ),
-  );
-}
-
-Widget _buildCloseButton(BuildContext context) {
-  return Align(
-    alignment: Alignment.topRight,
-    child: Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(50),
-        onTap: () => Navigator.of(context).pop(),
-        child: const Padding(
-          padding: EdgeInsets.all(8.0),
-          child: Icon(Icons.close, color: Color(0xFFC0C0C0), size: 24),
-        ),
-      ),
-    ),
-  );
-}
-
-Widget _buildCongratulationsText() {
-  return ShaderMask(
-    shaderCallback: (Rect bounds) {
-      return const LinearGradient(
-        colors: [Color(0xFF0098FF), Color(0xFFFFD700)],
-      ).createShader(bounds);
-    },
-    child: const Text(
-      'CONGRATULATIONS!',
-      style: TextStyle(
-        fontSize: 20,
-        fontWeight: FontWeight.bold,
-        color: Colors.white,
-        letterSpacing: 1.5,
-      ),
-    ),
-  );
-}
-
-Widget _buildPrizeName(String prizeName) {
-  return Text(
-    prizeName,
-    textAlign: TextAlign.center,
-    style: const TextStyle(
-      fontSize: 40,
-      fontWeight: FontWeight.bold,
-      color: Colors.white,
-      letterSpacing: 2,
-    ),
-  );
-}
-
-
-
-Widget _buildTermsLink() {
-  return InkWell(
-    onTap: () {
-      // Handle terms click
-    },
-    child: const Text(
-      'View Terms & Conditions',
-      style: TextStyle(
-        fontSize: 14,
-        color: Color(0xFFC0C0C0),
-        decoration: TextDecoration.underline,
-        decorationColor: Color(0xFF0098FF),
-      ),
-    ),
-  );
-}
-
-
-Widget _buildConfettiEffects() {
-  return Stack(
-    children: [
-      Align(
-        alignment: Alignment.topCenter,
-        child: ConfettiWidget(
-          confettiController: _confettiController,
-          blastDirectionality: BlastDirectionality.explosive,
-          particleDrag: 0.05,
-          emissionFrequency: 0.08,
-          numberOfParticles: 30,
-          maxBlastForce: 20,
-          minBlastForce: 10,
-          gravity: 0.2,
-          colors: const [
-            Color(0xFF0098FF),  // Electric Blue
-            Color(0xFFFFD700),  // Sunny Yellow
-            Color(0xFF008754),  // Sprite Green
-            Colors.white,
+  void _showNoProductsDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Aucun produit disponible'),
+          content: Text(
+              'Désolé, tous les produits d\'aujourd\'hui ont été distribués. Revenez demain!'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text('OK'),
+            ),
           ],
-        ),
-      ),
-      Align(
-        alignment: const Alignment(-0.8, -0.8),
-        child: ConfettiWidget(
-          confettiController: _confettiController,
-          blastDirection: pi / 4,
-          particleDrag: 0.05,
-          emissionFrequency: 0.08,
-          numberOfParticles: 15,
-          colors: const [
-            Color(0xFF0098FF),
-            Color(0xFFFFD700),
+        );
+      },
+    );
+  }
+
+  void _showProductUnavailableDialog(Fortune item) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Produit non disponible'),
+          content: Text(
+              'Ce produit n\'est plus disponible aujourd\'hui. Essayez encore!'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: Text('OK'),
+            ),
           ],
-        ),
-      ),
-      Align(
-        alignment: const Alignment(0.8, -0.8),
-        child: ConfettiWidget(
-          confettiController: _confettiController,
-          blastDirection: 3 * pi / 4,
-          particleDrag: 0.05,
-          emissionFrequency: 0.08,
-          numberOfParticles: 15,
-          colors: const [
-            Color(0xFF008754),
-            Colors.white,
-          ],
-        ),
-      ),
-    ],
-  );
-}
+        );
+      },
+    );
+  }
+
   ///Handling the calculation of the index value of the element while spinning
   int _getIndexFortune(double value) {
     int itemCount = widget.wheel.items.length;
@@ -866,7 +1378,7 @@ Widget _buildConfettiEffects() {
   //       navigateToSecondRouteAfterDelay(true);
   //     } else {
   //       totalLosses++;
-  //       // controlMotor();
+  //       controlMotor();
   //       navigateToSecondRouteAfterDelay(false);
   //     }
 
@@ -876,102 +1388,4 @@ Widget _buildConfettiEffects() {
   //     widget.onChanged.call(_fortuneItem);
   //   }
   // }
-
-  Future<void> sendDataTrue() async {
-    final String url = 'http://192.168.${IpController.text}:5000/motor';
-
-    try {
-      // Create a JSON payload
-
-      // Send a POST request to the Jetson Nano
-      var response = await http.post(Uri.parse(url), body: {'data': 'True'});
-
-      if (response.statusCode == 200) {
-        // Data sent successfully
-
-        print('Data sent successfully!');
-      } else {
-        // Failed to send data
-        print('Failed to send data. Error code: ${response.statusCode}');
-      }
-    } catch (e) {
-      // Error occurred while sending data
-      print('Error occurred while sending data: $e');
-    }
-  }
-
-  Future navigateToSecondRouteAfterDelay(bool value) async {
-    if (value == true) {
-      Navigator.push(
-        context as BuildContext,
-        MaterialPageRoute(builder: (context) => ImageFramePage()),
-      );
-    } else {
-      Navigator.push(
-        context as BuildContext,
-        MaterialPageRoute(builder: (context) => soufleurPage()),
-      );
-    }
-  }
-
-  // void controlMotor() async {
-  //   final response = await http.post(
-  //     Uri.parse('http://192.168.${IpController.text}:5000/blower'),
-  //     body: {'data': 'True'},
-  //   );
-
-  //   if (response.statusCode == 200) {
-  //     // If the server returns a 200 OK response, then parse the JSON.
-  //     print('Motor control successful');
-  //   } else {
-  //     // If the server returns an unexpected response, then throw an exception.
-  //     throw Exception('Failed to control motor');
-  //   }
-  // }
-
-// _saveData() async {
-//     SharedPreferences prefs = await SharedPreferences.getInstance();
-//     await prefs.setInt('totalSpins', totalSpins);
-//     await prefs.setInt('totalWins', totalWins);
-//     await prefs.setInt('totalLosses', totalLosses);
-
-//     DateTime now = DateTime.now();
-//     if (now.hour == 21) {
-//         // Store data to Firestore every day at 21:00
-//         // Use a timestamp to create a unique document ID
-//         await FirebaseFirestore.instance.collection('stats').doc('${now.toIso8601String()}').set({
-//             'totalSpins': totalSpins,
-//             'totalWins': totalWins,
-//             'totalLosses': totalLosses,
-//             'day': now.day,
-//             'hour': now.hour,
-//         });
-
-//         // Reset the values
-//         totalSpins = 0;
-//         totalWins = 0;
-//         totalLosses = 0;
-//         await prefs.setInt('totalSpins', totalSpins);
-//         await prefs.setInt('totalWins', totalWins);
-//         await prefs.setInt('totalLosses', totalLosses);
-//     }
-// }
-
-// Future<void> saveValues() async {
-//   // You should get the actual values of totalSpins, totalWins and totalLosses
-//   SharedPreferences prefs = await SharedPreferences.getInstance();
-
-//   // Store the actual values to SharedPreferences
-//   await prefs.setInt('totalSpins', totalSpins);
-//   await prefs.setInt('totalWins', totalWins);
-//   await prefs.setInt('totalLosses', totalLosses);
-
-//   // Save the timestamp as a String
-//   String timestamp = DateTime.now().toIso8601String();
-//   await prefs.setString('ValuesSavedAt', timestamp);
-
-//   // Save to SQLite Database
-
-//   print('Values saved at $timestamp');
-// }
 }
