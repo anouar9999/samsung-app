@@ -175,40 +175,6 @@ class _MyAppState extends State<MyApp> {
     return path;
   }
 
-  Widget _buildHeader() {
-    return const SafeArea(
-      child: Padding(
-        padding: EdgeInsets.only(right: 8, left: 16),
-        child: Row(
-          children: [
-            SizedBox(width: 16),
-            Text(
-              '',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 20,
-              ),
-            ),
-            Spacer(),
-            // IconButton(
-            //   splashRadius: 28,
-            //   onPressed: () {
-            //     Navigator.push(
-            //       context,
-            //       MaterialPageRoute(
-            //         builder: (context) => FortuneWheelHistoryPage(
-            //           resultsHistory: _resultsHistory,
-            //         ),
-            //       ),
-            //     );
-            //   },
-            //   icon: const Icon(Icons.bar_chart, color: Colors.white),
-            // ),
-          ],
-        ),
-      ),
-    );
-  }
 
   Widget _buildFortuneWheel() {
     return LayoutBuilder(
