@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math';
+import 'package:flutter_fortune_wheel/src/models/chance_rate_manager.dart';
 import 'package:flutter_fortune_wheel/src/models/product_manager.dart';
 import 'package:flutter_fortune_wheel/src/pages/quantities_page.dart';
 import 'package:flutter_fortune_wheel/src/views/stress_test.dart';
@@ -86,6 +87,8 @@ class _FortuneWheelState extends State<FortuneWheel>
       curve: Curves.fastLinearToSlowEaseIn,
     );
     ProductManager.loadDailyQuantities();
+      ChanceRateManager.loadChanceRates();
+
   }
 
   @override
@@ -507,18 +510,77 @@ class _FortuneWheelState extends State<FortuneWheel>
                 child: widget.wheel.arrowView ?? const ArrowView(),
               ),
             ),
-            _buildStressTestButton(),
+            // _buildStressTestButton(),
+                        //  _buildChanceRateButton(),  
+
           ],
         );
       },
     );
   }
 
+
+// Widget _buildChanceRateButton() {
+//   return Positioned(
+//     top: 120, // Position below stress test button
+//     left: 20,
+//     child: FloatingActionButton(
+//       mini: true,
+//       backgroundColor: Colors.purple[600],
+//       onPressed: _showChanceRateDialog,
+//       heroTag: "chance_rate_button",
+//       child: Icon(
+//         Icons.tune, 
+//         color: Colors.white,
+//         size: 20,
+//       ),
+//     ),
+//   );
+// }
+  
+  
   ///UI Wheel center
   Widget _buildCenterOfWheel() {
-    return Image.asset(
-      "assets/icons/go.png",
-      width: 150,
+    // Get screen dimensions
+    final screenSize = MediaQuery.of(context).size;
+    final screenWidth = screenSize.width;
+    final screenHeight = screenSize.height;
+    final shortestSide = screenSize.shortestSide;
+
+    // Calculate responsive center image size based on wheel size and screen
+    double centerImageSize;
+
+    if (shortestSide < 400) {
+      // Small screens (phones in portrait)
+      centerImageSize = wheelSize * 0.15; // 15% of wheel size
+    } else if (shortestSide < 600) {
+      // Medium screens (large phones, small tablets)
+      centerImageSize = wheelSize * 0.18; // 18% of wheel size
+    } else if (shortestSide < 800) {
+      // Large screens (tablets)
+      centerImageSize = wheelSize * 0.20; // 20% of wheel size
+    } else {
+      // Extra large screens (large tablets, desktops)
+      centerImageSize = wheelSize * 0.22; // 22% of wheel size
+    }
+
+    // Ensure minimum and maximum sizes
+    centerImageSize = centerImageSize.clamp(60.0, 180.0);
+
+    // Add responsive padding around the center image
+    final padding = centerImageSize * 0.1;
+
+    return Container(
+      width: centerImageSize + (padding * 2),
+      height: centerImageSize + (padding * 2),
+      child: Center(
+        child: Image.asset(
+          "assets/icons/go.png",
+          width: centerImageSize,
+          height: centerImageSize,
+          fit: BoxFit.contain,
+        ),
+      ),
     );
   }
 
@@ -1087,53 +1149,51 @@ class _FortuneWheelState extends State<FortuneWheel>
   //     // _showAnimatedWinningDialog(winningItem);  // Animated version
   //   }
   // }
-  Future<void> _handleSpinByRandomPressed() async {
-    if (!_wheelAnimationController.isAnimating) {
-      // Get available items based on daily quantities
-      final availableItems =
-          ProductManager.getAvailableItems(widget.wheel.items);
-
-      if (availableItems.isEmpty) {
-        _showNoProductsDialog();
-        return;
-      }
-
-      // Find indices of available items in the wheel
-      final availableIndices = <int>[];
-      for (int i = 0; i < widget.wheel.items.length; i++) {
-        final item = widget.wheel.items[i];
-        if (availableItems.any((available) => available.id == item.id)) {
-          availableIndices.add(i);
-        }
-      }
-
-      // Smart spin to land on available item
-      final targetIndex =
-          availableIndices[Random().nextInt(availableIndices.length)];
-
-      final itemCount = widget.wheel.items.length;
-      final angleFactor = _currentIndex > targetIndex
-          ? _currentIndex - targetIndex
-          : itemCount - (targetIndex - _currentIndex);
-      _angle = (2 * pi / itemCount) * angleFactor +
-          widget.wheel.rotationCount * 2 * pi;
-
-      await Future.microtask(() => widget.onAnimationStart?.call());
-      await _wheelAnimationController.forward(from: 0.0).then((_) {
-        double factor = _currentAngle / (2 * pi);
-        factor += _angle / (2 * pi);
-        factor %= 1;
-        _currentAngle = factor * 2 * pi;
-        _wheelAnimationController.reset();
-        _currentIndex = targetIndex;
-        widget.onResult.call(widget.wheel.items[_currentIndex]);
-      });
-      await Future.microtask(() => widget.onAnimationEnd?.call());
-
-      // Handle the result with quantity management
-      await _handleSpinResult();
+ Future<void> _handleSpinByRandomPressed() async {
+  if (!_wheelAnimationController.isAnimating) {
+    // Get available items based on daily quantities
+    final availableItems = ProductManager.getAvailableItems(widget.wheel.items);
+    
+    if (availableItems.isEmpty) {
+      _showNoProductsDialog();
+      return;
     }
+
+    // 🎯 NEW: Use chance rates to select the target item
+    final selectedFortune = ProductManager.selectFortuneByChance(availableItems);
+    
+    // Find the index of the selected item in the wheel
+    int targetIndex = 0;
+    for (int i = 0; i < widget.wheel.items.length; i++) {
+      if (widget.wheel.items[i].id == selectedFortune.id) {
+        targetIndex = i;
+        break;
+      }
+    }
+
+    final itemCount = widget.wheel.items.length;
+    final angleFactor = _currentIndex > targetIndex
+        ? _currentIndex - targetIndex
+        : itemCount - (targetIndex - _currentIndex);
+    _angle = (2 * pi / itemCount) * angleFactor +
+        widget.wheel.rotationCount * 2 * pi;
+
+    await Future.microtask(() => widget.onAnimationStart?.call());
+    await _wheelAnimationController.forward(from: 0.0).then((_) {
+      double factor = _currentAngle / (2 * pi);
+      factor += _angle / (2 * pi);
+      factor %= 1;
+      _currentAngle = factor * 2 * pi;
+      _wheelAnimationController.reset();
+      _currentIndex = targetIndex;
+      widget.onResult.call(widget.wheel.items[_currentIndex]);
+    });
+    await Future.microtask(() => widget.onAnimationEnd?.call());
+
+    // Handle the result with quantity management
+    await _handleSpinResult();
   }
+}
 
   Future<void> _handleSpinResult() async {
     final winningItem = widget.wheel.items[_currentIndex];
@@ -1162,73 +1222,207 @@ class _FortuneWheelState extends State<FortuneWheel>
   void _showWinningDialog(Fortune winningItem) {
     showDialog(
       context: context,
-      barrierDismissible: false,
+      barrierDismissible: true,
       builder: (BuildContext context) {
-        return AlertDialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Text(
-            '🎉 Félicitations! 🎉',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: Colors.green,
-            ),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 100,
-                height: 100,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: winningItem.backgroundColor,
-                  border: Border.all(color: Colors.green, width: 3),
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          child: TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0.0, end: 1.0),
+            duration: Duration(milliseconds: 600),
+            curve: Curves.elasticOut,
+            builder: (context, value, child) {
+              return Transform.scale(
+                scale: value,
+                child: Container(
+                  width: MediaQuery.of(context).size.width * 0.85,
+                  padding: EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Colors.green.shade400,
+                        Colors.green.shade600,
+                      ],
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.green.withOpacity(0.3),
+                        blurRadius: 20,
+                        offset: Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Animated confetti or sparkles effect
+                      Container(
+                        height: 60,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            // Multiple animated sparkles
+                            ...List.generate(
+                              8,
+                              (index) => TweenAnimationBuilder<double>(
+                                tween: Tween(begin: 0.0, end: 1.0),
+                                duration:
+                                    Duration(milliseconds: 800 + (index * 100)),
+                                curve: Curves.easeOutBack,
+                                builder: (context, sparkleValue, child) {
+                                  final angle =
+                                      (index * 45.0) * (3.14159 / 180);
+                                  final radius = 40 * sparkleValue;
+                                  return Positioned(
+                                    top: 30 + (radius * sin(angle)),
+                                    left: MediaQuery.of(context).size.width *
+                                            0.4 +
+                                        (radius * cos(angle)),
+                                    child: Transform.rotate(
+                                      angle: sparkleValue * 4,
+                                      child: Icon(
+                                        Icons.star,
+                                        size: 16,
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      // Main title with animated text
+                      TweenAnimationBuilder<double>(
+                        tween: Tween(begin: 0.0, end: 1.0),
+                        duration: Duration(milliseconds: 400),
+                        curve: Curves.easeOut,
+                        builder: (context, titleValue, child) {
+                          return Transform.translate(
+                            offset: Offset(0, 20 * (1 - titleValue)),
+                            child: Opacity(
+                              opacity: titleValue,
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    'Félicitations!',
+                                    style: TextStyle(
+                                      fontSize: 28,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                      shadows: [
+                                        Shadow(
+                                          offset: Offset(0, 2),
+                                          blurRadius: 4,
+                                          color: Colors.black26,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+
+                      SizedBox(height: 24),
+
+                      // Prize showcase with pulsing animation
+                      TweenAnimationBuilder<double>(
+                        tween: Tween(begin: 0.0, end: 1.0),
+                        duration: Duration(milliseconds: 800),
+                        curve: Curves.bounceOut,
+                        builder: (context, prizeValue, child) {
+                          return Transform.scale(
+                            scale: prizeValue,
+                            child: Container(
+                              width: 120,
+                              height: 120,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.white,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black26,
+                                    blurRadius: 15,
+                                    offset: Offset(0, 5),
+                                  ),
+                                ],
+                              ),
+                              child: Container(
+                                margin: EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: winningItem.backgroundColor,
+                                  border: Border.all(
+                                    color: Colors.green.shade300,
+                                    width: 3,
+                                  ),
+                                ),
+                                child: winningItem.icon,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+
+                      SizedBox(height: 24),
+
+                      // Prize details with slide animation
+                      TweenAnimationBuilder<double>(
+                        tween: Tween(begin: 0.0, end: 1.0),
+                        duration: Duration(milliseconds: 600),
+                        curve: Curves.easeOut,
+                        builder: (context, detailValue, child) {
+                          return Transform.translate(
+                            offset: Offset(0, 30 * (1 - detailValue)),
+                            child: Opacity(
+                              opacity: detailValue,
+                              child: Column(
+                                children: [
+                                  Text(
+                                    'Vous avez gagné',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      color: Colors.white.withOpacity(0.9),
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  SizedBox(height: 8),
+                                  Container(
+                                    padding: EdgeInsets.symmetric(
+                                        horizontal: 16, vertical: 8),
+                                    child: Text(
+                                      winningItem.titleName ?? 'Prix Mystère',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontSize: 30,
+                                        fontFamily: 'SamsungSharpSans-bold',
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+
+                      SizedBox(height: 32),
+
+                      // Action button with glow effect
+                    ],
+                  ),
                 ),
-                child: winningItem.icon,
-              ),
-              SizedBox(height: 20),
-              Text(
-                'Vous avez gagné:',
-                style: TextStyle(fontSize: 16, color: Colors.grey[600]),
-              ),
-              SizedBox(height: 8),
-              Text(
-                winningItem.titleName ?? 'Unknown Prize',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
-              ),
-              SizedBox(height: 16),
-              Text(
-                'Restant aujourd\'hui: ${ProductManager.getRemainingQuantity(winningItem.id)}',
-                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-              ),
-            ],
+              );
+            },
           ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              style: TextButton.styleFrom(
-                backgroundColor: Colors.green,
-                padding: EdgeInsets.symmetric(horizontal: 30, vertical: 12),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(25)),
-              ),
-              child: Text(
-                'Récupérer le prix!',
-                style:
-                    TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-              ),
-            ),
-          ],
         );
       },
     );
@@ -1237,54 +1431,152 @@ class _FortuneWheelState extends State<FortuneWheel>
   void _showLosingDialog(Fortune winningItem) {
     showDialog(
       context: context,
-      barrierDismissible: false,
+      barrierDismissible: true,
       builder: (BuildContext context) {
-        return AlertDialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Text(
-            '😔 Pas de chance!',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: Colors.red,
-            ),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 100,
-                height: 100,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: winningItem.backgroundColor,
-                  border: Border.all(color: Colors.red, width: 3),
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          child: TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0.0, end: 1.0),
+            duration: Duration(milliseconds: 500),
+            curve: Curves.easeOutBack,
+            builder: (context, value, child) {
+              return Transform.scale(
+                scale: value,
+                child: Container(
+                  width: MediaQuery.of(context).size.width * 0.85,
+                  padding: EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Colors.indigo.shade400,
+                        Colors.purple.shade500,
+                        Colors.deepPurple.shade600,
+                      ],
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.purple.withOpacity(0.3),
+                        blurRadius: 20,
+                        offset: Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Animated sad face or consolation animation
+                      TweenAnimationBuilder<double>(
+                        tween: Tween(begin: 0.0, end: 1.0),
+                        duration: Duration(milliseconds: 600),
+                        curve: Curves.bounceOut,
+                        builder: (context, emojiValue, child) {
+                          return Transform.scale(
+                            scale: emojiValue,
+                            child: Text(
+                              '💜',
+                              style: TextStyle(fontSize: 48),
+                            ),
+                          );
+                        },
+                      ),
+
+                      SizedBox(height: 16),
+
+                      // Title with gentle animation
+                      TweenAnimationBuilder<double>(
+                        tween: Tween(begin: 0.0, end: 1.0),
+                        duration: Duration(milliseconds: 400),
+                        curve: Curves.easeOut,
+                        builder: (context, titleValue, child) {
+                          return Transform.translate(
+                            offset: Offset(0, 20 * (1 - titleValue)),
+                            child: Opacity(
+                              opacity: titleValue,
+                              child: Text(
+                                'Presque gagné!',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 26,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                  shadows: [
+                                    Shadow(
+                                      offset: Offset(0, 2),
+                                      blurRadius: 4,
+                                      color: Colors.black26,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+
+                      SizedBox(height: 24),
+
+                      // Item with subtle animation
+                      TweenAnimationBuilder<double>(
+                        tween: Tween(begin: 0.0, end: 1.0),
+                        duration: Duration(milliseconds: 700),
+                        curve: Curves.easeOut,
+                        builder: (context, itemValue, child) {
+                          return Transform.scale(
+                            scale: itemValue,
+                            child: Container(
+                              width: 100,
+                              height: 100,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.white.withOpacity(0.9),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black26,
+                                    blurRadius: 12,
+                                    offset: Offset(0, 4),
+                                  ),
+                                ],
+                              ),
+                              child: Container(
+                                margin: EdgeInsets.all(6),
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: winningItem.backgroundColor
+                                          ?.withOpacity(0.8) ??
+                                      Colors.grey.shade300,
+                                  border: Border.all(
+                                    color: Colors.purple.shade300,
+                                    width: 2,
+                                  ),
+                                ),
+                                child: winningItem.icon,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+
+                      SizedBox(height: 24),
+
+                      // Auto-close countdown or manual close
+                    ],
+                  ),
                 ),
-                child: winningItem.icon,
-              ),
-              SizedBox(height: 20),
-              Text(
-                'Essayez encore!',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
-              ),
-              SizedBox(height: 16),
-              Text(
-                'Meilleure chance la prochaine fois!',
-                style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-              ),
-            ],
+              );
+            },
           ),
-          actions: [],
         );
       },
     );
+
+    // Auto-close after 3 seconds for losing dialog
+    Timer(Duration(seconds: 3), () {
+      if (Navigator.canPop(context)) {
+        Navigator.of(context).pop();
+      }
+    });
   }
 
   void _showNoProductsDialog() {
@@ -1388,4 +1680,232 @@ class _FortuneWheelState extends State<FortuneWheel>
   //     widget.onChanged.call(_fortuneItem);
   //   }
   // }
+}
+class ChanceRateQuickControl extends StatefulWidget {
+  @override
+  _ChanceRateQuickControlState createState() => _ChanceRateQuickControlState();
+}
+
+class _ChanceRateQuickControlState extends State<ChanceRateQuickControl> {
+  Map<String, double> _todaysRates = {};
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTodaysRates();
+  }
+
+  Future<void> _loadTodaysRates() async {
+    final rates = ChanceRateManager.getTodaysChanceRates();
+    setState(() {
+      _todaysRates = rates;
+      _isLoading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Container(
+        width: MediaQuery.of(context).size.width * 0.9,
+        height: MediaQuery.of(context).size.height * 0.8,
+        padding: EdgeInsets.all(16),
+        child: Column(
+          children: [
+            // Header
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '🎯 Contrôle des Chances',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: Icon(Icons.close),
+                ),
+              ],
+            ),
+            
+            SizedBox(height: 16),
+            
+            if (_isLoading)
+              Center(child: CircularProgressIndicator())
+            else
+              Expanded(
+                child: Column(
+                  children: [
+                    // Today's date
+                    Container(
+                      padding: EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.blue[50],
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.calendar_today, color: Colors.blue[600]),
+                          SizedBox(width: 8),
+                          Text(
+                            'Aujourd\'hui: ${ProductManager.getCurrentDateKey()}',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                    ),
+                    
+                    SizedBox(height: 16),
+                    
+                    // Product chance controls
+                    Expanded(
+                      child: ListView(
+                        children: ['1', '2', '3', '4', '5'].map((id) {
+                          return _buildChanceControl(id);
+                        }).toList(),
+                      ),
+                    ),
+                    
+                    SizedBox(height: 16),
+                    
+                    // Preset buttons
+                    Text('Préréglages:', style: TextStyle(fontWeight: FontWeight.bold)),
+                    SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      children: [
+                        _buildPresetButton('Équilibré', 'balanced'),
+                        _buildPresetButton('Généreux', 'generous'),
+                        _buildPresetButton('Conservateur', 'conservative'),
+                        _buildPresetButton('Premium', 'premium_focused'),
+                      ],
+                    ),
+                    
+                    SizedBox(height: 16),
+                    
+                    // Pas de chance calculation
+                    Container(
+                      padding: EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.orange[50],
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.orange[200]!),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.info, color: Colors.orange[600]),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Pas de chance: ${_calculatePasDeChance()}% (calculé automatiquement)',
+                              style: TextStyle(color: Colors.orange[800]),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChanceControl(String productId) {
+    final productName = ProductManager.getProductName(productId);
+    final currentRate = _todaysRates[productId] ?? 0.0;
+    final today = ProductManager.getCurrentDateKey();
+    final quantity = ProductManager.dailyQuantities[productId]?[today] ?? 0;
+    final isAvailable = quantity > 0;
+
+    return Container(
+      margin: EdgeInsets.only(bottom: 12),
+      padding: EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isAvailable ? Colors.green[50] : Colors.red[50],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isAvailable ? Colors.green[200]! : Colors.red[200]!,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                productName,
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              Spacer(),
+              Text(
+                '${quantity} disponible${quantity > 1 ? 's' : ''}',
+                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+              ),
+            ],
+          ),
+          SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: Slider(
+                  value: currentRate,
+                  min: 0.0,
+                  max: isAvailable ? 1.0 : 0.0,
+                  divisions: 20,
+                  label: '${(currentRate * 100).toStringAsFixed(0)}%',
+                  onChanged: isAvailable ? (value) {
+                    setState(() {
+                      _todaysRates[productId] = value;
+                    });
+                    _updateChanceRate(productId, value);
+                  } : null,
+                ),
+              ),
+              SizedBox(width: 8),
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: isAvailable ? Colors.green : Colors.red,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '${(currentRate * 100).toStringAsFixed(1)}%',
+                  style: TextStyle(color: Colors.white, fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPresetButton(String label, String preset) {
+    return ElevatedButton(
+      onPressed: () async {
+        await ChanceRateManager.applyPreset(preset);
+        await _loadTodaysRates();
+      },
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.blue[600],
+        foregroundColor: Colors.white,
+      ),
+      child: Text(label, style: TextStyle(fontSize: 12)),
+    );
+  }
+
+  void _updateChanceRate(String productId, double rate) async {
+    final today = ProductManager.getCurrentDateKey();
+    await ChanceRateManager.setChanceRate(productId, today, rate);
+  }
+
+  String _calculatePasDeChance() {
+    final today = ProductManager.getCurrentDateKey();
+    final pasDeChanceRate = ChanceRateManager.calculatePasDeChanceRate(today);
+    return (pasDeChanceRate * 100).toStringAsFixed(1);
+  }
 }

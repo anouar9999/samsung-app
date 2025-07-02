@@ -84,13 +84,29 @@ class _MyAppState extends State<MyApp> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Text(
-                    "SPIN TO WIN",
-                    style: TextStyle(
-                      color: Colors.black,
-                      fontFamily: 'SamsungSharpSans-bold',
-                      fontSize: 50,
-                      fontWeight: FontWeight.w900,
+                  TextButton(
+                    onPressed: () {
+                      // Add your spin logic here
+                      _showChanceRateDialog();
+                    },
+                    style: TextButton.styleFrom(
+                      padding:
+                          EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      // Remove default background and overlay colors for clean text look
+                      backgroundColor: Colors.transparent,
+                      overlayColor: Colors.grey.withOpacity(0.1),
+                    ),
+                    child: const Text(
+                      "SPIN TO WIN",
+                      style: TextStyle(
+                        color: Colors.black,
+                        fontFamily: 'SamsungSharpSans-bold',
+                        fontSize: 50,
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 40),
@@ -107,13 +123,13 @@ class _MyAppState extends State<MyApp> {
               return Positioned(
                 left: -leftImageWidth *
                     0.1, // Adjust this value to move image left/right
-               // Adjust this value to move image up/down
+                // Adjust this value to move image up/down
                 child: GestureDetector(
                   onTap: () {
                     Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => QuantitiesPage()),
-                  );
+                      context,
+                      MaterialPageRoute(builder: (context) => QuantitiesPage()),
+                    );
                   },
                   child: SizedBox(
                     width: leftImageWidth,
@@ -175,6 +191,32 @@ class _MyAppState extends State<MyApp> {
     return path;
   }
 
+  void _showChanceRateDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return ChanceRateQuickControl();
+      },
+    );
+  }
+
+  Widget _buildChanceRateButton() {
+    return Positioned(
+      top: 120, // Position below stress test button
+      left: 20,
+      child: FloatingActionButton(
+        mini: true,
+        backgroundColor: Colors.purple[600],
+        onPressed: _showChanceRateDialog,
+        heroTag: "chance_rate_button",
+        child: Icon(
+          Icons.tune,
+          color: Colors.white,
+          size: 20,
+        ),
+      ),
+    );
+  }
 
   Widget _buildFortuneWheel() {
     return LayoutBuilder(

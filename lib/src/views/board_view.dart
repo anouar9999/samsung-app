@@ -65,23 +65,82 @@ class BoardView extends StatelessWidget {
     );
   }
 
-  Widget _buildValue(Fortune fortune) {
+// Improved responsive _buildValue method
+Widget _buildValue(Fortune fortune) {
   return LayoutBuilder(
     builder: (context, constraints) {
-      // Get the shortest side of the screen for more consistent sizing
+      // Get screen dimensions for better responsiveness
       final screenSize = MediaQuery.of(context).size;
       final shortestSide = screenSize.shortestSide;
+      final devicePixelRatio = MediaQuery.of(context).devicePixelRatio;
+      final orientation = MediaQuery.of(context).orientation;
       
-      // Calculate dynamic size based on screen dimensions
-      final dynamicSize = size * (shortestSide / 400); // 400 is a baseline width
+      // Enhanced dynamic size calculation
+      double baselineWidth = 400.0;
+      if (orientation == Orientation.landscape) {
+        baselineWidth = 500.0; // Adjust for landscape
+      }
       
-      // Calculate responsive font sizes
-      final minFontSize = (shortestSide * 0.04).clamp(15.0, 24.0);
-      final maxFontSize = (shortestSide * 0.06).clamp(25.0, 48.0);
+      final dynamicSize = size * (shortestSide / baselineWidth);
       
-      // Calculate responsive padding and spacing
-      final topPadding = (dynamicSize * 0.15).clamp(10.0, 40.0);
-      final contentWidth = (dynamicSize * 0.4).clamp(80.0, 300.0);
+      // Improved responsive font sizing with device density consideration
+      double fontSizeMultiplier = 1.0;
+      if (devicePixelRatio > 2.5) {
+        fontSizeMultiplier = 1.1; // Slightly larger on high-density screens
+      }
+      
+      // Calculate responsive font sizes with smaller fonts for small phones
+      double minFontSize, maxFontSize, optimalFontSize;
+      
+      if (shortestSide < 360) {
+        // Very small phones - significantly smaller fonts
+        minFontSize = (shortestSide * 0.025 * fontSizeMultiplier).clamp(8.0, 14.0);
+        maxFontSize = (shortestSide * 0.04 * fontSizeMultiplier).clamp(12.0, 20.0);
+        optimalFontSize = (14.0 * fontSizeMultiplier).clamp(minFontSize, maxFontSize);
+      } else if (shortestSide < 400) {
+        // Small phones - smaller fonts
+        minFontSize = (shortestSide * 0.028 * fontSizeMultiplier).clamp(9.0, 16.0);
+        maxFontSize = (shortestSide * 0.045 * fontSizeMultiplier).clamp(14.0, 24.0);
+        optimalFontSize = (16.0 * fontSizeMultiplier).clamp(minFontSize, maxFontSize);
+      } else {
+        // Normal and larger phones - original sizing
+        minFontSize = (shortestSide * 0.035 * fontSizeMultiplier).clamp(12.0, 22.0);
+        maxFontSize = (shortestSide * 0.055 * fontSizeMultiplier).clamp(18.0, 42.0);
+        optimalFontSize = (19.0 * fontSizeMultiplier).clamp(minFontSize, maxFontSize);
+      }
+      
+      // Enhanced responsive spacing calculations with smaller spacing for small phones
+      double topPadding, contentWidth, containerHeight, iconSize, iconPadding;
+      
+      if (shortestSide < 360) {
+        // Very small phones - compact spacing
+        topPadding = (dynamicSize * 0.08).clamp(4.0, 20.0);
+        contentWidth = (dynamicSize * 0.5).clamp(60.0, 200.0);
+        containerHeight = (dynamicSize / 2.8).clamp(35.0, 120.0);
+        iconSize = (dynamicSize * 0.15).clamp(16.0, 45.0);
+      } else if (shortestSide < 400) {
+        // Small phones - reduced spacing
+        topPadding = (dynamicSize * 0.1).clamp(6.0, 25.0);
+        contentWidth = (dynamicSize * 0.48).clamp(65.0, 220.0);
+        containerHeight = (dynamicSize / 2.5).clamp(40.0, 150.0);
+        iconSize = (dynamicSize * 0.16).clamp(18.0, 55.0);
+      } else if (shortestSide < 600) {
+        // Normal phones - standard spacing with more top padding
+        topPadding = (dynamicSize * 0.16).clamp(12.0, 45.0);
+        contentWidth = (dynamicSize * 0.45).clamp(70.0, 280.0);
+        containerHeight = (dynamicSize / 2.3).clamp(50.0, 200.0);
+        iconSize = (dynamicSize * 0.18).clamp(20.0, 70.0);
+      } else {
+        // Large phones and tablets - even more top padding
+        topPadding = (dynamicSize * 0.16).clamp(12.0, 45.0);
+        contentWidth = (dynamicSize * 0.42).clamp(80.0, 300.0);
+        containerHeight = (dynamicSize / 2.2).clamp(60.0, 220.0);
+        iconSize = (dynamicSize * 0.17).clamp(22.0, 75.0);
+      }
+      
+      iconPadding = fortune.titleName == null 
+          ? (dynamicSize * 0.015).clamp(3.0, 10.0)
+          : (dynamicSize * 0.008).clamp(1.5, 5.0);
       
       return Container(
         height: dynamicSize,
@@ -90,7 +149,7 @@ class BoardView extends StatelessWidget {
         padding: EdgeInsets.only(top: topPadding),
         child: ConstrainedBox(
           constraints: BoxConstraints.expand(
-            height: dynamicSize / 2.5,
+            height: containerHeight,
             width: contentWidth,
           ),
           child: SingleChildScrollView(
@@ -99,61 +158,72 @@ class BoardView extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               mainAxisSize: MainAxisSize.min,
               children: [
-                  // Flexible(
-                  //   child: FittedBox(
-                  //     fit: BoxFit.scaleDown,
-                  //     child: AutoSizeText(
-                  //       fortune.titleName!,
-                  //       style: fortune.textStyle?.copyWith(
-                  //         fontSize: maxFontSize,
-                  //       ) ?? TextStyle(
-                  //         color: fortune.FontColor ?? Colors.white,
-                  //         fontWeight: FontWeight.w600,
-                  //         fontFamily: 'SamsungSharpSans',
-                  //         fontSize: 10,
-                  //         height: 1.2,
-                  //       ),
-                  //       textAlign: TextAlign.center,
-                  //       minFontSize: minFontSize,
-                  //       maxFontSize: maxFontSize,
-                  //       maxLines: 2,
-                  //       overflow: TextOverflow.ellipsis,
-                  //     ),
-                  //   ),
-                  // ),
-               
+                // Enhanced text rendering
                 if (fortune.titleName != null)
-                 Flexible(
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: AutoSizeText(
-                        fortune.titleName!,
-                        style: fortune.textStyle?.copyWith(
-                     
-                        ) ?? TextStyle(
-                          color: fortune.FontColor ?? Colors.white,
-                         
-                          fontFamily: 'SamsungSharpSans-medium',
-                          fontSize: 29.0.clamp(minFontSize, maxFontSize),
-
+                  Flexible(
+                    child: Container(
+                      constraints: BoxConstraints(
+                        minHeight: minFontSize * 1.2,
+                        maxHeight: containerHeight * 0.6,
+                      ),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.center,
+                        child: AutoSizeText(
+                          fortune.titleName!,
+                          style: fortune.textStyle?.copyWith(
+                            fontSize: optimalFontSize,
+                            height: 1.1, // Better line height for readability
+                            letterSpacing: 0.5, // Improved letter spacing
+                          ) ?? TextStyle(
+                            color: fortune.FontColor ?? Colors.white,
+                            fontFamily: 'SamsungSharpSans-medium',
+                            fontSize: optimalFontSize,
+                            fontWeight: FontWeight.w600,
+                            height: 1.1,
+                            letterSpacing: 0.5,
+                            shadows: [
+                              // Add text shadow for better readability
+                              Shadow(
+                                offset: Offset(1, 1),
+                                blurRadius: 2,
+                                color: Colors.black.withOpacity(0.3),
+                              ),
+                            ],
+                          ),
+                          textAlign: TextAlign.center,
+                          minFontSize: minFontSize,
+                          maxFontSize: maxFontSize,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          presetFontSizes: [
+                            maxFontSize,
+                            optimalFontSize,
+                            minFontSize,
+                          ],
                         ),
-                        textAlign: TextAlign.center,
-                      
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ),
+                
+                // Enhanced icon rendering
                 if (fortune.icon != null)
                   Padding(
-                    padding: EdgeInsets.all(
-                      fortune.titleName == null
-                          ? (dynamicSize * 0.02).clamp(4.0, 12.0)
-                          : (dynamicSize * 0.01).clamp(2.0, 6.0),
-                    ),
-                    child: SizedBox(
-                      width: (dynamicSize * 0.2).clamp(24.0, 80.0),
-                      height: (dynamicSize * 0.2).clamp(24.0, 80.0),
+                    padding: EdgeInsets.all(iconPadding),
+                    child: Container(
+                      width: iconSize,
+                      height: iconSize,
+                      decoration: BoxDecoration(
+                        // Optional: Add background for better icon visibility
+                        borderRadius: BorderRadius.circular(4),
+                        boxShadow: [
+                          BoxShadow(
+                            offset: Offset(0, 1),
+                            blurRadius: 2,
+                            color: Colors.black.withOpacity(0.1),
+                          ),
+                        ],
+                      ),
                       child: FittedBox(
                         fit: BoxFit.contain,
                         child: fortune.icon!,
@@ -168,8 +238,6 @@ class BoardView extends StatelessWidget {
     },
   );
 }
-
-
 }
 
 ///Wheel frame painter
