@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:math';
 // import 'dart:math';
 import 'package:confetti/confetti.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_fortune_wheel/flutter_fortune_wheel.dart';
@@ -108,8 +107,7 @@ class _MyAppState extends State<MyApp> {
               return Positioned(
                 left: -leftImageWidth *
                     0.1, // Adjust this value to move image left/right
-                top: -leftImageWidth *
-                    0.1, // Adjust this value to move image up/down
+               // Adjust this value to move image up/down
                 child: GestureDetector(
                   onTap: () {
                     Navigator.push(
@@ -133,7 +131,7 @@ class _MyAppState extends State<MyApp> {
           Positioned(
             right: -rightImageWidth *
                 0.1, // Adjust this value to move image left/right
-            bottom: -rightImageWidth *
+            bottom: rightImageWidth *
                 0.1, // Adjust this value to move image up/down
             child: GestureDetector(
               onTap: () => setState(() => isWin = true),
